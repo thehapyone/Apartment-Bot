@@ -17,8 +17,11 @@ from selenium.webdriver.common.by import By
 logger = logging.getLogger("scrapper_logger")
 logger.setLevel(logging.INFO)
 
+# Display Port
+display_port = os.environ.get('DISPLAY_PORT')
+
 # Configuring the Display
-display = Display(visible=False, extra_args=[':25'], size=(1920, 1200))
+display = Display(visible=False, extra_args=[f':{display_port}'], size=(1920, 1200))
 display.start()
 logger.info('Started Display 25')
 
