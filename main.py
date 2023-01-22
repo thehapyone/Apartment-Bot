@@ -28,7 +28,8 @@ USERNAME = os.environ.get('SITE_USERNAME')
 PASSWORD = os.environ.get('SITE_PASSWORD')
 MAX_RENT = int(os.environ.get('MAX_RENT', "15000"))
 MAX_DISTANCE = int(os.environ.get('MAX_DISTANCE', 18))
-
+MINIMUM_SIZE = int(os.environ.get('MINIMUM_SIZE', 20))
+MINIMUM_ROOM = int(os.environ.get('MINIMUM_ROOM', 1))
 
 class Apartment(NamedTuple):
     """
@@ -43,6 +44,16 @@ class Apartment(NamedTuple):
     time: Optional[str]
     unique_id: str
 
+
+def criteria_match(rent: int, distance: int,
+                   size: int, rooms: int) -> bool:
+    # Evaluates if the user criteria condition matched
+    if rent <= MAX_RENT and \
+            distance <= MAX_DISTANCE and \
+                size >= MINIMUM_SIZE and \
+                    rooms >= MINIMUM_ROOM:
+        return True
+    return False
 
 class Scrapper:
     """
@@ -248,7 +259,16 @@ class Scrapper:
         kr_removed = apartment.rent.split("kr")[0].strip()
         striped_rent = int("".join(kr_removed.split(" ")))
         distance_stripped = float(apartment.distance.split("km")[0].strip())
-        if striped_rent <= MAX_RENT and distance_stripped <= MAX_DISTANCE:
+
+        try:
+            check_criteria = criteria_match(striped_rent, distance_stripped,
+                                            int(apartment.area),
+                                            int(apartment.rooms))
+        except Exception as error:
+            logger.error(f"An error as occurred - {error}")
+            check_criteria = False
+
+        if check_criteria:
             self.apply_to_apartment(apartment)
         else:
             logger.info(
