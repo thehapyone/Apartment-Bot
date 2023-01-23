@@ -13,7 +13,7 @@ from selenium.webdriver.common.by import By
 
 # Configuring Selenium
 options = Options()
-options.headless = True
+options.headless = False
 options.add_argument("--window-size=1920,1200")
 options.add_argument('--ignore-ssl-errors=yes')
 options.add_argument('--ignore-certificate-errors')
@@ -30,6 +30,7 @@ MAX_RENT = int(os.environ.get('MAX_RENT', "15000"))
 MAX_DISTANCE = int(os.environ.get('MAX_DISTANCE', 18))
 MINIMUM_SIZE = int(os.environ.get('MINIMUM_SIZE', 20))
 MINIMUM_ROOM = int(os.environ.get('MINIMUM_ROOM', 1))
+LONG_RENT_ONLY = bool(os.environ.get('LONG_RENT_ONLY', True))
 
 class Apartment(NamedTuple):
     """
@@ -42,16 +43,18 @@ class Apartment(NamedTuple):
     rooms: str
     distance: Optional[str]
     time: Optional[str]
+    is_short_rent: bool
     unique_id: str
 
-
 def criteria_match(rent: int, distance: int,
-                   size: int, rooms: int) -> bool:
+                   size: int, rooms: int, is_short_rent: bool) -> bool:
     # Evaluates if the user criteria condition matched
     if rent <= MAX_RENT and \
             distance <= MAX_DISTANCE and \
                 size >= MINIMUM_SIZE and \
                     rooms >= MINIMUM_ROOM:
+        if LONG_RENT_ONLY and is_short_rent:
+            return False
         return True
     return False
 
@@ -212,6 +215,8 @@ class Scrapper:
             'div', class_='card card-style-cc w-100 h-100'). \
             find('div', class_='row')
 
+        is_short_rent = True if "korttidskontrakt" in str(information) else False
+
         apartment_infos = information.findNext()
         results = {'Link': link}
 
@@ -246,9 +251,10 @@ class Scrapper:
         apartment = Apartment(
             location=location.strip(),
             link=link.strip(),
-            area=results.get("Size", "").strip(),
+            is_short_rent=is_short_rent,
+            area=results.get("Size", "").strip().split(" ")[0],
             rent=results.get("Rent", "").strip(),
-            rooms=results.get("Rum", "").strip(),
+            rooms=results.get("Rum", "").strip().split(" ")[0],
             distance=distance.strip(), time=travel_time.strip(),
             unique_id=hashlib.md5(f'{link.strip()}{location.strip()}'.encode())
                 .hexdigest()
@@ -263,17 +269,19 @@ class Scrapper:
         try:
             check_criteria = criteria_match(striped_rent, distance_stripped,
                                             int(apartment.area),
-                                            int(apartment.rooms))
+                                            int(apartment.rooms), is_short_rent)
         except Exception as error:
             logger.error(f"An error as occurred - {error}")
             check_criteria = False
 
         if check_criteria:
-            self.apply_to_apartment(apartment)
+            #self.apply_to_apartment(apartment)
+            print(apartment)
         else:
             logger.info(
                 f"Apartment criteria not matched. "
                 f"Criteria: {MAX_RENT}KR rent and {MAX_DISTANCE} KM")
+            logger.info(apartment)
 
         return apartment
 
