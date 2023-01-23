@@ -271,9 +271,9 @@ class Scrapper:
         apartment = Apartment(
             location=location.strip(),
             link=link.strip(),
-            area=results.get("Size", "").strip(),
+            area=results.get("Size", "").strip().split(" ")[0],
             rent=results.get("Rent", "").strip(),
-            rooms=results.get("Rum", "").strip(),
+            rooms=results.get("Rum", "").strip().split(" ")[0],
             distance=distance.strip(), time=travel_time.strip(),
             unique_id=hashlib.md5(f'{link.strip()}{location.strip()}'.encode())
                 .hexdigest()
@@ -299,6 +299,7 @@ class Scrapper:
             logger.info(
                 f"Apartment criteria not matched. "
                 f"Criteria: {MAX_RENT}KR rent and {MAX_DISTANCE} KM")
+            logger.info(apartment)
 
         return apartment
 
