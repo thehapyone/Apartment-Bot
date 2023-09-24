@@ -63,6 +63,7 @@ class Apartment(NamedTuple):
     distance: Optional[str]
     time: Optional[str]
     unique_id: str
+    is_short_rent: bool
 
 def criteria_match(rent: int, distance: int,
                    size: int, rooms: int, is_short_rent: bool) -> bool:
