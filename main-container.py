@@ -352,68 +352,6 @@ class Scrapper:
 
         return location, distance, travel_time
 
-
-#
-# def find_unique_apartments(apartments: Tuple[Apartment]) -> Tuple[Apartment]:
-#     """Returns a set of unique apartments that are not currently saved in the db"""
-#     unique_apartments = []
-#     for apartment in apartments:
-#         unique_id = apartment.unique_id
-#         # dynamodb fetch for apartment
-#         result = table.get_item(
-#             Key={
-#                 'unique_id': unique_id
-#             }).get("Item", None)
-#         if result is None:
-#             unique_apartments.append(apartment)
-#         else:
-#             logger.debug(f"Apartment with unique id {unique_id} is already present in db")
-#
-#     return tuple(unique_apartments)
-#
-#
-# def add_apartments_to_db(apartments: Tuple[Apartment]):
-#     """Adds the processed apartments to db to avoid processing again"""
-#     for apartment in apartments:
-#         try:
-#             table.put_item(
-#                 Item={**apartment._asdict()})
-#         except Exception:
-#             logger.warning(f"An error has occurred in saving apartment "
-#                            f"with unique id {apartment.unique_id} to db.", exc_info=True)
-#
-#
-# def publish_apartments(apartments: Tuple[Apartment]):
-#     """Publish the Apartments to SNS topic for subscribers to react"""
-#     apartment_message_list = []
-#     for apartment in apartments:
-#         message_list = [f'{key.capitalize()}: {value}' for key, value in apartment._asdict().items()]
-#         message = "\n".join(message_list)
-#         apartment_message = f"{message}\n\n"
-#         apartment_message_list.append(apartment_message)
-#
-#     header = f"{len(apartments)} New apartments has been found. See below and apply to each one. \n"
-#     deliver_message = header + "\n".join(apartment_message_list)
-#     sms_message = f"{len(apartments)} New apartments has been found. See email and apply."
-#
-#     message_body = dict(
-#         default=sms_message,
-#         email=deliver_message
-#     )
-#     try:
-#         publish_response = topic.publish(
-#             Message=json.dumps(message_body),
-#             Subject="URGENT - New Apartment(s) found",
-#             MessageStructure='json'
-#         )
-#         logger.debug(f'Message has been published. MessageId - {publish_response.get("MessageId")}')
-#     except Exception:
-#         logger.error("Could not publish message to SNS topic", exc_info=True)
-#     else:
-#         # Save the apartments to the db if no error.
-#         add_apartments_to_db(apartments)
-#
-
 def lambda_handler(event, context):
     """The handler for lambda invocation"""
     website = "https://minasidor.wahlinfastigheter.se/ledigt/lagenhet"
