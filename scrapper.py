@@ -76,11 +76,13 @@ class Scrapper:
         self.url = "https://minasidor.wahlinfastigheter.se/ledigt/lagenhet"
         self._google_api_key = google_api_key
         self.driver = driver
+        logger.info("Begin Scrapper Initialization")
         self.house = self.initialize_soup()
         self.reference_location = "vasastan"
         # tracks if there is a login session
         self._session = False
         self.logger = logger
+        logger.info("Scrapper Initalization Complete")
 
     def initialize_soup(self) -> Optional[BeautifulSoup]:
         """Here we will initialize the apartment site details"""
@@ -90,23 +92,25 @@ class Scrapper:
             self.driver.get(self.url)
             # wait the ready state to be complete
             website_wait(self.driver)
-            self.driver.find_element(By.ID, "btnApproveAll").click()
+            cookie = self.driver.find_element(By.ID, "btnApproveAll")
+            if cookie:
+                cookie.click()
             # wait the ready state to be complete
             website_wait(self.driver)
         except Exception as error:
-            print(error)
+            if "btnApproveAll" in str(error):
+                soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+                return soup
             logger.error("Could not initialize Scrapper site object",
                          exc_info=True)
             return None
-        except NoSuchElementException:
-            pass
-
         soup = BeautifulSoup(self.driver.page_source, 'html.parser')
 
         return soup
 
     def quit_browser(self):
         """Quit browser"""
+        logger.info("Cleanup driver")
         try:
             self.driver.quit()
         except Exception:
@@ -114,6 +118,9 @@ class Scrapper:
 
     def login_to_site(self):
         """Logins to the lottery site"""
+        if not USERNAME or not PASSWORD:
+            self.logger.error("USERNAME and PASSWORD needs to be provided")
+            return False
         # login to the site
         login_url = "https://minasidor.wahlinfastigheter.se/Account/Login"
         self.driver.get(login_url)
@@ -174,6 +181,10 @@ class Scrapper:
     def get_apartments(self) -> tuple:
         """Gets the current active apartments from the housing site"""
         # Gets the number of apartments
+        if self.house is None:
+            raise Exception("House object is none")
+
+        logger.info("Begin fetching apartments")
         no_of_apartment = self.no_of_apartments()
         if no_of_apartment == 0:
             return tuple()
@@ -183,6 +194,7 @@ class Scrapper:
             find_all('div', class_='pl-0 pr-2 col-12 col-sm-6 col-xl-4 pb-2')
 
         # Login to the apartment
+        logger.info("Attempting to login to website")
         self._session = self.login_to_site()
         if not self._session:
             logger.error("Unable to proceed with apartments.")
@@ -193,7 +205,7 @@ class Scrapper:
 
     def no_of_apartments(self) -> int:
         """Returns the no of current active apartments"""
-        # Gets the section of the apartments counts are
+        # Gets the section of the apartment counts are
         res = self.get_apartments_section()
         apartment_counts = self.get_apartments_section(). \
             find_all('div', class_='pl-0 pr-2 col-12 col-sm-6 col-xl-4 pb-2')

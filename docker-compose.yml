@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  bot:
+    image: thehapyone/apartment-bot:latest
+    container_name: apartment-bot
+    environment:
+      GOOGLE_API_KEY: ""
+      LONG_RENT_ONLY: "True"
+      MAX_RENT: 1500
+      SITE_PASSWORD: ""
+      SITE_USERNAME: ''
+      MINIMUM_SIZE: 50
+      MINIMUM_ROOM: 2
+    restart: no

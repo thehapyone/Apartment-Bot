@@ -1,5 +1,6 @@
 # Code is meant to inside container environments
 import os
+import time
 
 from pyvirtualdisplay import Display
 from selenium import webdriver
@@ -15,6 +16,10 @@ display = Display(visible=False, extra_args=[f':{display_port}'],
                   size=(1920, 1200))
 display.start()
 
+# Generate a unique user data directory using timestamp
+timestamp = int(time.time())
+user_data_dir = f"/tmp/chrome-user-data-{timestamp}"
+
 # Chrome configuration
 chrome_options = Options()
 chrome_options.add_argument('--headless')
@@ -27,7 +32,7 @@ chrome_options.add_argument("--single-process")
 chrome_options.add_argument("--ignore-certificate-errors")
 chrome_options.add_argument('--ignore-ssl-errors=yes')
 chrome_options.add_argument("window-size=1920x1200")
-chrome_options.add_argument("--user-data-dir=/tmp/chrome-user-data")
+chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
 chrome_options.add_argument("--remote-debugging-port=9222")
 chrome_options.binary_location = '/opt/chrome/chrome'
 
