@@ -35,8 +35,7 @@ COPY requirements.txt requirements.txt
 
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY main-container.py app.py
+COPY scrapper.py .
+COPY container.py app.py
 
-#ENTRYPOINT ["/usr/bin/bash", "ls", "-al"]
-#CMD ["whoami"]
 ENTRYPOINT ["python3", "app.py"]

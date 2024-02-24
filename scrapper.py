@@ -1,48 +1,20 @@
-import json
-from typing import Optional, Union, Tuple, NamedTuple
 import hashlib
+import json
 import logging
 import os
+import re
+from typing import Optional, Union, Tuple, NamedTuple
+
 import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
-from pyvirtualdisplay import Display
-
-from selenium import webdriver
 from selenium.common import NoSuchElementException
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 
 # Logger
 logger = logging.getLogger("scrapper_logger")
 logger.setLevel(logging.INFO)
 
-# Display Port
-display_port = os.environ.get('DISPLAY_PORT')
-
-# Configuring the Display
-display = Display(visible=False, extra_args=[f':{display_port}'], size=(1920, 1200))
-display.start()
-logger.info('Started Display 25')
-
-# Chrome configuration
-chrome_options = ChromeOptions()
-chrome_options.add_argument('--headless')
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--disable-dev-tools")
-chrome_options.add_argument("--no-zygote")
-chrome_options.add_argument("--single-process")
-chrome_options.add_argument("--ignore-certificate-errors")
-chrome_options.add_argument('--ignore-ssl-errors=yes')
-chrome_options.add_argument("window-size=1920x1200")
-chrome_options.add_argument("--user-data-dir=/tmp/chrome-user-data")
-chrome_options.add_argument("--remote-debugging-port=9222")
-chrome_options.binary_location = '/opt/chrome/chrome'
-
-# get the google api key
-api_key = os.environ.get('GOOGLE_API_KEY')
 USERNAME = os.environ.get('SITE_USERNAME')
 PASSWORD = os.environ.get('SITE_PASSWORD')
 MAX_RENT = int(os.environ.get('MAX_RENT', "15000"))
@@ -50,6 +22,11 @@ MAX_DISTANCE = int(os.environ.get('MAX_DISTANCE', 18))
 MINIMUM_SIZE = int(os.environ.get('MINIMUM_SIZE', 20))
 MINIMUM_ROOM = int(os.environ.get('MINIMUM_ROOM', 1))
 LONG_RENT_ONLY = bool(os.environ.get('LONG_RENT_ONLY', True))
+
+# Define regular expressions for rent and size
+rent_pattern = re.compile(r'(\d+ \d+ kr)')
+size_pattern = re.compile(r'(\d+ m2)')
+
 
 class Apartment(NamedTuple):
     """
@@ -62,62 +39,71 @@ class Apartment(NamedTuple):
     rooms: str
     distance: Optional[str]
     time: Optional[str]
-    unique_id: str
     is_short_rent: bool
+    unique_id: str
 
-def criteria_match(rent: int, distance: int,
+
+def criteria_match(rent: int, distance: float,
                    size: int, rooms: int, is_short_rent: bool) -> bool:
     # Evaluates if the user criteria condition matched
     if rent <= MAX_RENT and \
             distance <= MAX_DISTANCE and \
-                size >= MINIMUM_SIZE and \
-                    rooms >= MINIMUM_ROOM:
+            size >= MINIMUM_SIZE and \
+            rooms >= MINIMUM_ROOM:
         if LONG_RENT_ONLY and is_short_rent:
             return False
         return True
     return False
 
+
+def website_wait(driver, timeout: int = 10):
+    WebDriverWait(driver=driver, timeout=timeout).until(
+        lambda x: x.execute_script(
+            "return document.readyState === 'complete'")
+    )
+
+
 class Scrapper:
     """
     The scrapper entry class
 
-    :param str url: The housing url
     :param str google_api_key: The Google API key for accessing the map features
+    :param any driver: The web driver to use
+
     """
 
-    def __init__(self, url, google_api_key):
-        self.url = url
+    def __init__(self, google_api_key, driver):
+        self.url = "https://minasidor.wahlinfastigheter.se/ledigt/lagenhet"
         self._google_api_key = google_api_key
+        self.driver = driver
         self.house = self.initialize_soup()
         self.reference_location = "vasastan"
-        self.driver = None
         # tracks if there is a login session
         self._session = False
+        self.logger = logger
 
     def initialize_soup(self) -> Optional[BeautifulSoup]:
         """Here we will initialize the apartment site details"""
         logging.info("Initializing soup")
         try:
             # Selenium configuration
-            driver = webdriver.Chrome(
-                executable_path='/opt/chromedriver/chromedriver',
-                options=chrome_options,
-                service_log_path='/tmp/chromedriver.log')
-            driver.get(self.url)
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            driver.quit()
-        except Exception:
+            self.driver.get(self.url)
+            # wait the ready state to be complete
+            website_wait(self.driver)
+            self.driver.find_element(By.ID, "btnApproveAll").click()
+            # wait the ready state to be complete
+            website_wait(self.driver)
+        except Exception as error:
+            print(error)
             logger.error("Could not initialize Scrapper site object",
                          exc_info=True)
             return None
-        return soup
+        except NoSuchElementException:
+            pass
 
-    @staticmethod
-    def website_wait(driver, timeout: int = 10):
-        WebDriverWait(driver=driver, timeout=timeout).until(
-            lambda x: x.execute_script(
-                "return document.readyState === 'complete'")
-        )
+        soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+
+        return soup
 
     def quit_browser(self):
         """Quit browser"""
@@ -128,32 +114,26 @@ class Scrapper:
 
     def login_to_site(self):
         """Logins to the lottery site"""
-        # create a driver instance session
-        self.driver = webdriver.Chrome(
-                executable_path='/opt/chromedriver/chromedriver',
-                options=chrome_options,
-                service_log_path='/tmp/chromedriver.log')
-
         # login to the site
         login_url = "https://minasidor.wahlinfastigheter.se/Account/Login"
         self.driver.get(login_url)
 
         # wait the ready state to be complete
-        self.website_wait(self.driver)
+        website_wait(self.driver)
 
         self.driver.find_element(By.ID, "nav-logine-tab").click()
         self.driver.find_element(By.ID, "UserId").send_keys(USERNAME)
         self.driver.find_element(By.ID, "Password").send_keys(PASSWORD)
 
         # wait the ready state to be complete
-        self.website_wait(self.driver)
+        website_wait(self.driver)
 
         # Submit button
         element = self.driver.find_element(By.ID, "LoginButton")
         element.submit()
 
         # wait the ready state to be complete
-        self.website_wait(self.driver)
+        website_wait(self.driver)
 
         try:
             error = self.driver.find_element(
@@ -195,13 +175,12 @@ class Scrapper:
         """Gets the current active apartments from the housing site"""
         # Gets the number of apartments
         no_of_apartment = self.no_of_apartments()
-        logger.info(f"Number of apartments found is  {no_of_apartment}")
         if no_of_apartment == 0:
             return tuple()
 
         # Get the apartments
         apartments = self.get_apartments_section(). \
-            find_all('div', class_='pl-0 pr-2 col-12 col-sm-6 col-xl-3 pb-2')
+            find_all('div', class_='pl-0 pr-2 col-12 col-sm-6 col-xl-4 pb-2')
 
         # Login to the apartment
         self._session = self.login_to_site()
@@ -215,8 +194,9 @@ class Scrapper:
     def no_of_apartments(self) -> int:
         """Returns the no of current active apartments"""
         # Gets the section of the apartments counts are
+        res = self.get_apartments_section()
         apartment_counts = self.get_apartments_section(). \
-            find_all('div', class_='pl-0 pr-2 col-12 col-sm-6 col-xl-3 pb-2')
+            find_all('div', class_='pl-0 pr-2 col-12 col-sm-6 col-xl-4 pb-2')
         return len(apartment_counts)
 
     def get_apartment_details(self, apartment_item: BeautifulSoup) -> \
@@ -241,7 +221,8 @@ class Scrapper:
             'div', class_='card card-style-cc w-100 h-100'). \
             find('div', class_='row')
 
-        is_short_rent = True if "korttidskontrakt" in str(information) else False
+        is_short_rent = True if "korttidskontrakt" in str(
+            information) else False
 
         apartment_infos = information.findNext()
         results = {'Link': link}
@@ -252,22 +233,25 @@ class Scrapper:
         results['Location'] = f"{location[0].text.strip()}, " \
                               f"{location[1].text.strip()}"
 
-        rent_section = apartment_infos. \
-            find('div', class_='col-12 d-flex').findChildren('div')
+        results["Rum"] = apartment_infos. \
+            find('p', class_="object-preview-headline-size-cc col-12") \
+            .text.strip()
 
-        if not len(rent_section):
+        rent_section = apartment_infos.find('div', class_='col-12 d-flex').text
+
+        if "Intresseanmäld" in rent_section:
             # means apartment is already registered
             logger.warning(f"Already registered to the apartment "
                            f"at {results['Location']}")
             return None
 
-        results['Rent'] = rent_section[0].text.strip()
+        # Search for matches in the rent section
+        rent_match = rent_pattern.search(rent_section.strip())
+        size_match = size_pattern.search(rent_section.strip())
 
-        results['Size'] = rent_section[2].text.strip()
-
-        results["Rum"] = apartment_infos. \
-            find('p', class_="object-preview-headline-size-cc col-12") \
-            .text.strip()
+        # Extract values if matches are found
+        results['Rent'] = rent_match.group(1).strip() if rent_match else ""
+        results['Size'] = size_match.group(1).strip() if size_match else ""
 
         # Get the location estimate
         location, distance, travel_time = self.location_estimate(
@@ -278,23 +262,21 @@ class Scrapper:
             location=location.strip(),
             link=link.strip(),
             is_short_rent=is_short_rent,
-            area=results.get("Size", "").strip().split(" ")[0],
-            rent=results.get("Rent", "").strip(),
-            rooms=results.get("Rum", "").strip().split(" ")[0],
+            area=results.get("Size", ""),
+            rent=results.get("Rent", ""),
+            rooms=results.get("Rum", "").split(" ")[0],
             distance=distance.strip(), time=travel_time.strip(),
             unique_id=hashlib.md5(f'{link.strip()}{location.strip()}'.encode())
-                .hexdigest()
+            .hexdigest()
         )
-
-        # Apply to the Apartment
-        # self.apply_to_apartment(apartment)
         kr_removed = apartment.rent.split("kr")[0].strip()
         striped_rent = int("".join(kr_removed.split(" ")))
         distance_stripped = float(apartment.distance.split("km")[0].strip())
+        area_striped = apartment.area.split("m2")[0].strip()
 
         try:
             check_criteria = criteria_match(striped_rent, distance_stripped,
-                                            int(apartment.area),
+                                            int(area_striped),
                                             int(apartment.rooms), is_short_rent)
         except Exception as error:
             logger.error(f"An error as occurred - {error}")
@@ -352,28 +334,3 @@ class Scrapper:
             distance, travel_time = "", ""
 
         return location, distance, travel_time
-
-def lambda_handler(event, context):
-    """The handler for lambda invocation"""
-    website = "https://minasidor.wahlinfastigheter.se/ledigt/lagenhet"
-    scrapper = Scrapper(website, api_key)
-    try:
-        apartments = scrapper.get_apartments()
-    except Exception:
-        logger.error("An error has occurred", exc_info=True)
-        scrapper.quit_browser()
-        return {
-            'status_code': 401,
-            'status': 'failed'
-        }
-    logger.info(f"Apartments: {apartments}")
-
-    scrapper.quit_browser()
-    return {
-        'status_code': 201,
-        'status': 'success'
-    }
-
-
-if __name__ == '__main__':
-    lambda_handler([], None)
